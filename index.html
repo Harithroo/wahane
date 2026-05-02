@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#153243">
+  <meta name="description" content="A mobile-first vehicle maintenance command center for tracking vehicles, service history, reminders, and service centers.">
+  <title>Wahane</title>
+  <link rel="manifest" href="./manifest.json">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar surface">
+      <div class="brand-lockup">
+        <button class="menu-button" id="menuButton" type="button" aria-expanded="false" aria-controls="mobileDrawer" aria-label="Open navigation menu">
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+        <div>
+          <p class="eyebrow">Vehicle Command Center</p>
+          <h1>Wahane</h1>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <nav class="desktop-nav" aria-label="Primary">
+          <button class="nav-item active" type="button" data-nav="dashboard">Dashboard</button>
+          <button class="nav-item" type="button" data-nav="vehicles">Vehicles</button>
+          <button class="nav-item" type="button" data-nav="maintenance">Maintenance</button>
+          <button class="nav-item" type="button" data-nav="reminders">Reminders</button>
+          <button class="nav-item" type="button" data-nav="service-centers">Centers</button>
+        </nav>
+        <button class="ghost-button" id="profileButton" type="button">Guest Mode</button>
+      </div>
+    </header>
+
+    <main class="app-main">
+      <section class="hero surface" id="heroSection">
+        <div class="hero-copy">
+          <p class="eyebrow">Stay ahead of maintenance</p>
+          <h2>Everything your vehicles need, in one thumb-friendly dashboard.</h2>
+          <p id="heroSummary">Track service records, reminders, and trusted shops even while offline.</p>
+        </div>
+        <div class="hero-actions">
+          <button class="primary-button" type="button" data-open-modal="vehicleModal">Add Vehicle</button>
+          <button class="secondary-button" type="button" data-open-modal="maintenanceModal">Log Service</button>
+        </div>
+      </section>
+
+      <section class="vehicle-switcher surface">
+        <div class="vehicle-summary">
+          <p class="eyebrow">Active Vehicle</p>
+          <h3 id="activeVehicleName">No vehicle yet</h3>
+          <p class="switcher-caption" id="activeVehicleMeta">Add a vehicle to start tailored reminders and history.</p>
+        </div>
+        <div class="vehicle-switcher-actions">
+          <select id="vehicleSelect" aria-label="Select vehicle"></select>
+          <button class="ghost-button" type="button" id="addVehicleInline">New</button>
+        </div>
+      </section>
+
+      <section class="view active" data-view="dashboard">
+        <div class="section-grid">
+          <article class="surface section-card">
+            <div class="section-header">
+              <div>
+                <p class="eyebrow">Needs Attention</p>
+                <h3>Due and overdue</h3>
+              </div>
+              <button class="text-button" type="button" data-nav="reminders">See all</button>
+            </div>
+            <div id="attentionList" class="stack-list"></div>
+          </article>
+
+          <article class="surface section-card">
+            <div class="section-header">
+              <div>
+                <p class="eyebrow">Recent Work</p>
+                <h3>Latest maintenance</h3>
+              </div>
+              <button class="text-button" type="button" data-nav="maintenance">History</button>
+            </div>
+            <div id="recentMaintenanceList" class="stack-list"></div>
+          </article>
+
+          <article class="surface section-card">
+            <div class="section-header">
+              <div>
+                <p class="eyebrow">Shortcuts</p>
+                <h3>Quick actions</h3>
+              </div>
+            </div>
+            <div class="quick-actions">
+              <button class="quick-action" type="button" data-open-modal="maintenanceModal">Oil Change</button>
+              <button class="quick-action" type="button" data-open-modal="reminderModal">Add Reminder</button>
+              <button class="quick-action" type="button" data-open-modal="serviceCenterModal">Save Shop</button>
+              <button class="quick-action" type="button" id="completeNextReminder">Mark Next Done</button>
+            </div>
+          </article>
+
+          <article class="surface section-card">
+            <div class="section-header">
+              <div>
+                <p class="eyebrow">Fleet Snapshot</p>
+                <h3>Vehicle status</h3>
+              </div>
+              <button class="text-button" type="button" data-nav="vehicles">Manage</button>
+            </div>
+            <div id="vehicleStatusCards" class="card-list"></div>
+          </article>
+
+          <article class="surface section-card">
+            <div class="section-header">
+              <div>
+                <p class="eyebrow">Saved Centers</p>
+                <h3>Trusted shops</h3>
+              </div>
+              <button class="text-button" type="button" data-nav="service-centers">Directory</button>
+            </div>
+            <div id="serviceCenterShortcuts" class="stack-list"></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="view" data-view="vehicles">
+        <div class="section-header page-header">
+          <div>
+            <p class="eyebrow">Vehicles</p>
+            <h2>Manage your garage</h2>
+          </div>
+          <button class="primary-button" type="button" data-open-modal="vehicleModal">Add Vehicle</button>
+        </div>
+        <div id="vehiclesViewList" class="card-list"></div>
+      </section>
+
+      <section class="view" data-view="maintenance">
+        <div class="section-header page-header">
+          <div>
+            <p class="eyebrow">Maintenance</p>
+            <h2>Service history</h2>
+          </div>
+          <button class="primary-button" type="button" data-open-modal="maintenanceModal">Log Service</button>
+        </div>
+        <div id="maintenanceViewList" class="stack-list spacious"></div>
+      </section>
+
+      <section class="view" data-view="reminders">
+        <div class="section-header page-header">
+          <div>
+            <p class="eyebrow">Reminders</p>
+            <h2>Date and mileage alerts</h2>
+          </div>
+          <button class="primary-button" type="button" data-open-modal="reminderModal">New Reminder</button>
+        </div>
+        <div id="remindersViewList" class="stack-list spacious"></div>
+      </section>
+
+      <section class="view" data-view="service-centers">
+        <div class="section-header page-header">
+          <div>
+            <p class="eyebrow">Service Centers</p>
+            <h2>Saved places</h2>
+          </div>
+          <button class="primary-button" type="button" data-open-modal="serviceCenterModal">Add Center</button>
+        </div>
+        <div id="serviceCentersViewList" class="stack-list spacious"></div>
+      </section>
+    </main>
+
+  </div>
+
+  <div class="drawer-backdrop hidden" id="drawerBackdrop"></div>
+  <aside class="mobile-drawer hidden" id="mobileDrawer" aria-label="Mobile navigation">
+    <div class="drawer-header">
+      <div>
+        <p class="eyebrow">Navigate</p>
+        <h2>Wahane</h2>
+      </div>
+      <button class="ghost-button" id="closeDrawer" type="button">Close</button>
+    </div>
+    <nav class="drawer-nav">
+      <button class="drawer-link active" type="button" data-nav="dashboard">Dashboard</button>
+      <button class="drawer-link" type="button" data-nav="vehicles">Vehicles</button>
+      <button class="drawer-link" type="button" data-nav="maintenance">Maintenance</button>
+      <button class="drawer-link" type="button" data-nav="reminders">Reminders</button>
+      <button class="drawer-link" type="button" data-nav="service-centers">Service Centers</button>
+    </nav>
+  </aside>
+
+  <div class="modal-backdrop hidden" id="modalRoot">
+    <div class="modal-panel surface" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="section-header">
+        <div>
+          <p class="eyebrow">Quick entry</p>
+          <h2 id="modalTitle">Add item</h2>
+        </div>
+        <button class="ghost-button" id="closeModal" type="button">Close</button>
+      </div>
+      <div id="modalContent"></div>
+    </div>
+  </div>
+
+  <template id="vehicleModal">
+    <form class="form-grid" id="vehicleForm">
+      <label>
+        Nickname
+        <input name="nickname" placeholder="Daily Driver" required>
+      </label>
+      <label>
+        Make
+        <input name="make" placeholder="Toyota" required>
+      </label>
+      <label>
+        Model
+        <input name="model" placeholder="Corolla" required>
+      </label>
+      <label>
+        Year
+        <input name="year" type="number" min="1950" max="2100" placeholder="2021" required>
+      </label>
+      <label>
+        Plate / ID
+        <input name="plate" placeholder="ABC-1234">
+      </label>
+      <label>
+        Fuel Type
+        <input name="fuelType" placeholder="Gasoline, Diesel, EV">
+      </label>
+      <label>
+        Purchase Date
+        <input name="purchaseDate" type="date">
+      </label>
+      <label>
+        Current Odometer
+        <input name="currentOdometer" type="number" min="0" placeholder="24500" required>
+      </label>
+      <label>
+        Default service interval (days)
+        <input name="defaultIntervalDays" type="number" min="0" placeholder="180">
+      </label>
+      <label>
+        Default service interval (miles/km)
+        <input name="defaultIntervalMileage" type="number" min="0" placeholder="5000">
+      </label>
+      <button class="primary-button" type="submit">Save Vehicle</button>
+    </form>
+  </template>
+
+  <template id="maintenanceModal">
+    <form class="form-grid" id="maintenanceForm">
+      <label>
+        Vehicle
+        <select name="vehicleId" required></select>
+      </label>
+      <label>
+        Service Type
+        <input name="serviceType" placeholder="Oil change" required>
+      </label>
+      <label>
+        Date
+        <input name="performedAt" type="date" required>
+      </label>
+      <label>
+        Odometer
+        <input name="odometer" type="number" min="0" required>
+      </label>
+      <label>
+        Cost
+        <input name="totalCost" type="number" min="0" step="0.01" placeholder="89.99">
+      </label>
+      <label>
+        Service Center
+        <select name="serviceCenterId"></select>
+      </label>
+      <label>
+        Next Due Date
+        <input name="nextDueDate" type="date">
+      </label>
+      <label>
+        Next Due Mileage
+        <input name="nextDueMileage" type="number" min="0">
+      </label>
+      <label class="full-width">
+        Notes
+        <textarea name="notes" rows="4" placeholder="Filter replaced, tire pressure checked"></textarea>
+      </label>
+      <button class="primary-button" type="submit">Save Record</button>
+    </form>
+  </template>
+
+  <template id="reminderModal">
+    <form class="form-grid" id="reminderForm">
+      <label>
+        Vehicle
+        <select name="vehicleId" required></select>
+      </label>
+      <label>
+        Reminder Title
+        <input name="title" placeholder="Registration renewal" required>
+      </label>
+      <label>
+        Related Service Type
+        <input name="relatedServiceType" placeholder="Inspection">
+      </label>
+      <label>
+        Due Date
+        <input name="dueDate" type="date">
+      </label>
+      <label>
+        Due Mileage
+        <input name="dueMileage" type="number" min="0">
+      </label>
+      <label>
+        Lead Time (days)
+        <input name="leadTime" type="number" min="0" value="7">
+      </label>
+      <label>
+        Snoozed Until
+        <input name="snoozedUntil" type="date">
+      </label>
+      <button class="primary-button" type="submit">Save Reminder</button>
+    </form>
+  </template>
+
+  <template id="serviceCenterModal">
+    <form class="form-grid" id="serviceCenterForm">
+      <label>
+        Name
+        <input name="name" placeholder="Northside Auto" required>
+      </label>
+      <label>
+        Phone
+        <input name="phone" placeholder="+1 555 0100">
+      </label>
+      <label class="full-width">
+        Address
+        <input name="addressText" placeholder="123 Main St, Columbus, OH">
+      </label>
+      <label class="full-width">
+        Notes
+        <textarea name="notes" rows="4" placeholder="Fast with tire work, ask for Mike"></textarea>
+      </label>
+      <button class="primary-button" type="submit">Save Center</button>
+    </form>
+  </template>
+
+  <script src="./app.js"></script>
+</body>
+</html>

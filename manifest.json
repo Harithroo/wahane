@@ -1,0 +1,23 @@
+{
+  "name": "Wahane",
+  "short_name": "Wahane",
+  "description": "A local-first vehicle maintenance command center for owners with multiple vehicles.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f3efe7",
+  "theme_color": "#153243",
+  "icons": [
+    {
+      "src": "./public/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "./public/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
