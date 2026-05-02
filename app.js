@@ -143,6 +143,7 @@ function loadState() {
 }
 
 let state = loadState();
+let modalContext = null;
 
 const els = {
   menuButton: document.getElementById("menuButton"),
@@ -164,7 +165,10 @@ const els = {
   serviceCentersViewList: document.getElementById("serviceCentersViewList"),
   modalRoot: document.getElementById("modalRoot"),
   modalTitle: document.getElementById("modalTitle"),
-  modalContent: document.getElementById("modalContent")
+  modalContent: document.getElementById("modalContent"),
+  exportDataButton: document.getElementById("exportDataButton"),
+  importDataButton: document.getElementById("importDataButton"),
+  importDataInput: document.getElementById("importDataInput")
 };
 
 function saveState() {
@@ -181,6 +185,14 @@ function getVehicle(vehicleId) {
 
 function getServiceCenter(centerId) {
   return state.serviceCenters.find((center) => center.id === centerId);
+}
+
+function getReminder(reminderId) {
+  return state.reminders.find((reminder) => reminder.id === reminderId);
+}
+
+function getMaintenanceRecord(recordId) {
+  return state.maintenanceRecords.find((record) => record.id === recordId);
 }
 
 function activeVehicle() {
@@ -228,6 +240,43 @@ function currency(value) {
 
 function emptyState(text) {
   return `<div class="empty-state">${text}</div>`;
+}
+
+function actionButtons(type, itemId, includeComplete = false) {
+  return `
+    <div class="card-actions">
+      ${includeComplete ? `<button class="text-button" type="button" data-complete-reminder="${itemId}">Mark complete</button>` : ""}
+      <button class="text-button" type="button" data-edit-type="${type}" data-edit-id="${itemId}">Edit</button>
+      <button class="text-button danger-button" type="button" data-delete-type="${type}" data-delete-id="${itemId}">Delete</button>
+    </div>
+  `;
+}
+
+function syncEventName(type, mode) {
+  return `${type}.${mode}`;
+}
+
+function replaceById(collection, nextItem) {
+  return collection.map((item) => item.id === nextItem.id ? nextItem : item);
+}
+
+function normalizeImportedState(candidate) {
+  if (!candidate || typeof candidate !== "object") {
+    throw new Error("Imported file is not valid JSON data.");
+  }
+
+  return {
+    ...defaultState,
+    ...candidate,
+    user: { ...defaultState.user, ...(candidate.user || {}) },
+    vehicles: Array.isArray(candidate.vehicles) ? candidate.vehicles : [],
+    maintenanceRecords: Array.isArray(candidate.maintenanceRecords) ? candidate.maintenanceRecords : [],
+    reminders: Array.isArray(candidate.reminders) ? candidate.reminders : [],
+    serviceCenters: Array.isArray(candidate.serviceCenters) ? candidate.serviceCenters : [],
+    syncQueue: Array.isArray(candidate.syncQueue) ? candidate.syncQueue : [],
+    activeView: candidate.activeView || defaultState.activeView,
+    activeVehicleId: candidate.activeVehicleId || (candidate.vehicles && candidate.vehicles[0] ? candidate.vehicles[0].id : null)
+  };
 }
 
 function renderSelectOptions(select, includeBlank = false) {
@@ -344,6 +393,7 @@ function renderVehicles() {
           <span>${summary.latestRecord ? `Last service: ${summary.latestRecord.performedAt}` : "No maintenance logged"}</span>
           <span>${vehicle.defaultServiceIntervals.mileage || "-"} ${state.user.unitDistance} interval</span>
         </div>
+        ${actionButtons("vehicle", vehicle.id)}
       </article>`;
   }).join("") : emptyState("Your garage is empty. Add the first vehicle and the app will tailor the dashboard around it.");
 }
@@ -371,6 +421,7 @@ function renderMaintenance() {
           <span>${record.nextDueDate || "No next due date"}${record.nextDueMileage ? ` | ${record.nextDueMileage} ${state.user.unitDistance}` : ""}</span>
         </div>
         ${record.notes ? `<p>${record.notes}</p>` : ""}
+        ${actionButtons("maintenance", record.id)}
       </article>`;
   }).join("") : emptyState("No maintenance records for this vehicle yet.");
 }
@@ -397,10 +448,10 @@ function renderReminders() {
         <span>${reminder.relatedServiceType || "General"}</span>
         <span>${reminder.dueDate || "No date"}${reminder.dueMileage ? ` | ${reminder.dueMileage} ${state.user.unitDistance}` : ""}</span>
       </div>
-      <div class="detail-row">
-        <span class="meta-row">Lead time: ${reminder.leadTime || 7} days</span>
-        <button class="text-button" type="button" data-complete-reminder="${reminder.id}">Mark complete</button>
+      <div class="meta-row">
+        <span>Lead time: ${reminder.leadTime || 7} days</span>
       </div>
+      ${actionButtons("reminder", reminder.id, true)}
     </article>
   `).join("") : emptyState("No reminders yet. Add one for dates, mileage, or both.");
 }
@@ -414,6 +465,7 @@ function renderServiceCenters() {
         <span>${center.addressText || "No address saved"}</span>
       </div>
       ${center.notes ? `<p>${center.notes}</p>` : ""}
+      ${actionButtons("serviceCenter", center.id)}
     </article>
   `).join("") : emptyState("Save service centers you trust so future records are faster to log.");
 }
@@ -454,9 +506,10 @@ function navigate(view) {
   closeDrawer();
 }
 
-function openModal(templateId, title) {
+function openModal(templateId, title, context = null) {
   const template = document.getElementById(templateId);
   if (!template) return;
+  modalContext = context;
   els.modalTitle.textContent = title;
   els.modalContent.innerHTML = "";
   els.modalContent.appendChild(template.content.cloneNode(true));
@@ -473,12 +526,15 @@ function openModal(templateId, title) {
   const dateInput = els.modalContent.querySelector('input[name="performedAt"]');
   if (dateInput) dateInput.value = TODAY;
 
+  populateModalForm(context);
+
   bindModalForms();
 }
 
 function closeModal() {
   els.modalRoot.classList.add("hidden");
   els.modalContent.innerHTML = "";
+  modalContext = null;
 }
 
 function openDrawer() {
@@ -493,6 +549,195 @@ function closeDrawer() {
   els.menuButton.setAttribute("aria-expanded", "false");
 }
 
+function populateModalForm(context) {
+  if (!context) return;
+  const form = els.modalContent.querySelector("form");
+  if (!form || !context.values) return;
+
+  Object.entries(context.values).forEach(([key, value]) => {
+    const field = form.elements.namedItem(key);
+    if (field) field.value = value ?? "";
+  });
+
+  const submitButton = form.querySelector('button[type="submit"]');
+  if (submitButton && context.submitLabel) submitButton.textContent = context.submitLabel;
+}
+
+function upsertVehicle(vehicle) {
+  const existing = getVehicle(vehicle.id);
+  if (existing) {
+    state.vehicles = replaceById(state.vehicles, vehicle);
+    enqueueSync(syncEventName("vehicle", "updated"), vehicle);
+  } else {
+    state.vehicles.unshift(vehicle);
+    state.activeVehicleId = vehicle.id;
+    enqueueSync(syncEventName("vehicle", "created"), vehicle);
+  }
+}
+
+function upsertMaintenanceRecord(record) {
+  const existing = getMaintenanceRecord(record.id);
+  if (existing) {
+    state.maintenanceRecords = replaceById(state.maintenanceRecords, record);
+    enqueueSync(syncEventName("maintenance", "updated"), record);
+  } else {
+    state.maintenanceRecords.unshift(record);
+    enqueueSync(syncEventName("maintenance", "created"), record);
+  }
+
+  const vehicle = getVehicle(record.vehicleId);
+  if (vehicle) vehicle.currentOdometer = Math.max(Number(vehicle.currentOdometer), Number(record.odometer));
+}
+
+function upsertReminder(reminder) {
+  const existing = getReminder(reminder.id);
+  if (existing) {
+    state.reminders = replaceById(state.reminders, reminder);
+    enqueueSync(syncEventName("reminder", "updated"), reminder);
+  } else {
+    state.reminders.unshift(reminder);
+    enqueueSync(syncEventName("reminder", "created"), reminder);
+  }
+}
+
+function upsertServiceCenter(center) {
+  const existing = getServiceCenter(center.id);
+  if (existing) {
+    state.serviceCenters = replaceById(state.serviceCenters, center);
+    enqueueSync(syncEventName("serviceCenter", "updated"), center);
+  } else {
+    state.serviceCenters.unshift(center);
+    enqueueSync(syncEventName("serviceCenter", "created"), center);
+  }
+}
+
+function editItem(type, itemId) {
+  const config = {
+    vehicle: {
+      templateId: "vehicleModal",
+      title: "Edit vehicle",
+      item: getVehicle(itemId),
+      submitLabel: "Save Changes",
+      values: (vehicle) => ({
+        nickname: vehicle.nickname,
+        make: vehicle.make,
+        model: vehicle.model,
+        year: vehicle.year,
+        plate: vehicle.plate,
+        fuelType: vehicle.fuelType,
+        purchaseDate: vehicle.purchaseDate,
+        currentOdometer: vehicle.currentOdometer,
+        defaultIntervalDays: vehicle.defaultServiceIntervals?.days,
+        defaultIntervalMileage: vehicle.defaultServiceIntervals?.mileage
+      })
+    },
+    maintenance: {
+      templateId: "maintenanceModal",
+      title: "Edit maintenance",
+      item: getMaintenanceRecord(itemId),
+      submitLabel: "Save Changes",
+      values: (record) => ({ ...record })
+    },
+    reminder: {
+      templateId: "reminderModal",
+      title: "Edit reminder",
+      item: getReminder(itemId),
+      submitLabel: "Save Changes",
+      values: (reminder) => ({ ...reminder })
+    },
+    serviceCenter: {
+      templateId: "serviceCenterModal",
+      title: "Edit service center",
+      item: getServiceCenter(itemId),
+      submitLabel: "Save Changes",
+      values: (center) => ({ ...center })
+    }
+  }[type];
+
+  if (!config || !config.item) return;
+  openModal(config.templateId, config.title, {
+    mode: "edit",
+    type,
+    itemId,
+    submitLabel: config.submitLabel,
+    values: config.values(config.item)
+  });
+}
+
+function deleteItem(type, itemId) {
+  const labelMap = {
+    vehicle: "vehicle",
+    maintenance: "maintenance record",
+    reminder: "reminder",
+    serviceCenter: "service center"
+  };
+  if (!window.confirm(`Delete this ${labelMap[type]}? This action cannot be undone.`)) return;
+
+  if (type === "vehicle") {
+    state.vehicles = state.vehicles.filter((vehicle) => vehicle.id !== itemId);
+    state.maintenanceRecords = state.maintenanceRecords.filter((record) => record.vehicleId !== itemId);
+    state.reminders = state.reminders.filter((reminder) => reminder.vehicleId !== itemId);
+    if (state.activeVehicleId === itemId) {
+      state.activeVehicleId = state.vehicles[0]?.id || null;
+    }
+  }
+
+  if (type === "maintenance") {
+    state.maintenanceRecords = state.maintenanceRecords.filter((record) => record.id !== itemId);
+  }
+
+  if (type === "reminder") {
+    state.reminders = state.reminders.filter((reminder) => reminder.id !== itemId);
+  }
+
+  if (type === "serviceCenter") {
+    state.serviceCenters = state.serviceCenters.filter((center) => center.id !== itemId);
+    state.maintenanceRecords = state.maintenanceRecords.map((record) => (
+      record.serviceCenterId === itemId ? { ...record, serviceCenterId: "" } : record
+    ));
+  }
+
+  enqueueSync(syncEventName(type, "deleted"), { id: itemId });
+  saveState();
+  render();
+}
+
+function exportData() {
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    app: "Wahane",
+    version: 1,
+    data: state
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `wahane-export-${TODAY}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function importData(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.addEventListener("load", () => {
+    try {
+      const parsed = JSON.parse(reader.result);
+      const nextState = normalizeImportedState(parsed.data || parsed);
+      state = nextState;
+      saveState();
+      render();
+      window.alert("Data imported successfully.");
+    } catch (error) {
+      window.alert(error.message || "Could not import that file.");
+    } finally {
+      els.importDataInput.value = "";
+    }
+  });
+  reader.readAsText(file);
+}
+
 function bindModalForms() {
   const vehicleForm = document.getElementById("vehicleForm");
   if (vehicleForm) {
@@ -500,7 +745,7 @@ function bindModalForms() {
       event.preventDefault();
       const data = new FormData(vehicleForm);
       const vehicle = {
-        id: id("vehicle"),
+        id: modalContext?.itemId || id("vehicle"),
         ownerId: state.user.id,
         nickname: data.get("nickname"),
         make: data.get("make"),
@@ -516,9 +761,7 @@ function bindModalForms() {
         },
         status: "healthy"
       };
-      state.vehicles.unshift(vehicle);
-      state.activeVehicleId = vehicle.id;
-      enqueueSync("vehicle.created", vehicle);
+      upsertVehicle(vehicle);
       saveState();
       render();
       closeModal();
@@ -531,7 +774,7 @@ function bindModalForms() {
       event.preventDefault();
       const data = new FormData(maintenanceForm);
       const record = {
-        id: id("maint"),
+        id: modalContext?.itemId || id("maint"),
         vehicleId: data.get("vehicleId"),
         serviceType: data.get("serviceType"),
         performedAt: data.get("performedAt"),
@@ -542,10 +785,8 @@ function bindModalForms() {
         nextDueDate: data.get("nextDueDate"),
         nextDueMileage: data.get("nextDueMileage")
       };
-      state.maintenanceRecords.unshift(record);
-      const vehicle = getVehicle(record.vehicleId);
-      if (vehicle) vehicle.currentOdometer = Math.max(Number(vehicle.currentOdometer), Number(record.odometer));
-      if (record.nextDueDate || record.nextDueMileage) {
+      upsertMaintenanceRecord(record);
+      if (!modalContext && (record.nextDueDate || record.nextDueMileage)) {
         state.reminders.unshift({
           id: id("rem"),
           vehicleId: record.vehicleId,
@@ -558,7 +799,6 @@ function bindModalForms() {
           snoozedUntil: ""
         });
       }
-      enqueueSync("maintenance.created", record);
       saveState();
       render();
       closeModal();
@@ -571,7 +811,7 @@ function bindModalForms() {
       event.preventDefault();
       const data = new FormData(reminderForm);
       const reminder = {
-        id: id("rem"),
+        id: modalContext?.itemId || id("rem"),
         vehicleId: data.get("vehicleId"),
         title: data.get("title"),
         relatedServiceType: data.get("relatedServiceType"),
@@ -581,8 +821,7 @@ function bindModalForms() {
         leadTime: Number(data.get("leadTime") || 7),
         snoozedUntil: data.get("snoozedUntil")
       };
-      state.reminders.unshift(reminder);
-      enqueueSync("reminder.created", reminder);
+      upsertReminder(reminder);
       saveState();
       render();
       closeModal();
@@ -595,15 +834,14 @@ function bindModalForms() {
       event.preventDefault();
       const data = new FormData(serviceCenterForm);
       const center = {
-        id: id("center"),
+        id: modalContext?.itemId || id("center"),
         ownerId: state.user.id,
         name: data.get("name"),
         phone: data.get("phone"),
         addressText: data.get("addressText"),
         notes: data.get("notes")
       };
-      state.serviceCenters.unshift(center);
-      enqueueSync("serviceCenter.created", center);
+      upsertServiceCenter(center);
       saveState();
       render();
       closeModal();
@@ -664,12 +902,27 @@ document.addEventListener("click", (event) => {
   const complete = event.target.closest("[data-complete-reminder]");
   if (complete) {
     completeReminder(complete.dataset.completeReminder);
+    return;
+  }
+
+  const editAction = event.target.closest("[data-edit-type]");
+  if (editAction) {
+    editItem(editAction.dataset.editType, editAction.dataset.editId);
+    return;
+  }
+
+  const deleteAction = event.target.closest("[data-delete-type]");
+  if (deleteAction) {
+    deleteItem(deleteAction.dataset.deleteType, deleteAction.dataset.deleteId);
   }
 });
 
 document.getElementById("addVehicleInline").addEventListener("click", () => openModal("vehicleModal", "Add vehicle"));
 document.getElementById("closeModal").addEventListener("click", closeModal);
 document.getElementById("profileButton").addEventListener("click", toggleAccountMode);
+els.exportDataButton.addEventListener("click", exportData);
+els.importDataButton.addEventListener("click", () => els.importDataInput.click());
+els.importDataInput.addEventListener("change", (event) => importData(event.target.files[0]));
 document.getElementById("menuButton").addEventListener("click", () => {
   const expanded = els.menuButton.getAttribute("aria-expanded") === "true";
   if (expanded) {

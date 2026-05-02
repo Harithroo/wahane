@@ -338,8 +338,25 @@ button {
   flex-wrap: wrap;
 }
 
+.data-actions,
+.card-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.card-actions {
+  margin-top: var(--space-3);
+  justify-content: flex-end;
+}
+
 .desktop-nav .nav-item {
   padding: 0.7rem 0.95rem;
+}
+
+.danger-button {
+  color: var(--danger);
 }
 
 label {
@@ -456,6 +473,10 @@ textarea {
   .topbar-actions {
     width: 100%;
     justify-content: space-between;
+  }
+
+  .data-actions {
+    width: 100%;
   }
 
   .desktop-nav {
