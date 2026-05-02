@@ -152,6 +152,7 @@ const els = {
   mobileDrawer: document.getElementById("mobileDrawer"),
   profileButton: document.getElementById("profileButton"),
   heroSummary: document.getElementById("heroSummary"),
+  heroDataStrip: document.getElementById("heroDataStrip"),
   activeVehicleName: document.getElementById("activeVehicleName"),
   activeVehicleMeta: document.getElementById("activeVehicleMeta"),
   vehicleSelect: document.getElementById("vehicleSelect"),
@@ -166,9 +167,13 @@ const els = {
   modalRoot: document.getElementById("modalRoot"),
   modalTitle: document.getElementById("modalTitle"),
   modalContent: document.getElementById("modalContent"),
+  modalModeLabel: document.getElementById("modalModeLabel"),
   exportDataButton: document.getElementById("exportDataButton"),
   importDataButton: document.getElementById("importDataButton"),
-  importDataInput: document.getElementById("importDataInput")
+  importDataInput: document.getElementById("importDataInput"),
+  drawerExportDataButton: document.getElementById("drawerExportDataButton"),
+  drawerImportDataButton: document.getElementById("drawerImportDataButton"),
+  toast: document.getElementById("toast")
 };
 
 function saveState() {
@@ -242,6 +247,19 @@ function emptyState(text) {
   return `<div class="empty-state">${text}</div>`;
 }
 
+let toastTimer = null;
+
+function showToast(message) {
+  els.toast.textContent = message;
+  els.toast.classList.remove("hidden");
+  els.toast.classList.add("visible");
+  window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => {
+    els.toast.classList.remove("visible");
+    els.toast.classList.add("hidden");
+  }, 2600);
+}
+
 function actionButtons(type, itemId, includeComplete = false) {
   return `
     <div class="card-actions">
@@ -292,6 +310,7 @@ function renderSelectOptions(select, includeBlank = false) {
 
 function renderVehicleSwitcher() {
   renderSelectOptions(els.vehicleSelect);
+  els.vehicleSelect.disabled = state.vehicles.length === 0;
   const current = activeVehicle();
   els.activeVehicleName.textContent = current ? `${current.nickname} | ${current.year} ${current.make} ${current.model}` : "No vehicle yet";
   els.activeVehicleMeta.textContent = current
@@ -473,10 +492,28 @@ function renderServiceCenters() {
 function renderHero() {
   const overdue = state.reminders.filter((item) => computeReminderStatus(item) === "overdue").length;
   const soon = state.reminders.filter((item) => computeReminderStatus(item) === "due-soon").length;
-  els.profileButton.textContent = state.user.mode === "guest" ? `Guest | ${state.syncQueue.length} queued` : "Account | synced";
+  els.profileButton.textContent = state.user.mode === "guest" ? "Guest" : "Account";
   els.heroSummary.textContent = overdue
     ? `${overdue} overdue and ${soon} due-soon items need attention. Data stays local-first and offline-ready.`
     : `${soon} upcoming reminders across ${state.vehicles.length} vehicles. Guest data is stored locally and ready to sync later.`;
+  els.heroDataStrip.innerHTML = `
+    <div class="mini-stat">
+      <strong>${state.vehicles.length}</strong>
+      <span>Vehicles</span>
+    </div>
+    <div class="mini-stat">
+      <strong>${state.maintenanceRecords.length}</strong>
+      <span>Records</span>
+    </div>
+    <div class="mini-stat">
+      <strong>${state.reminders.length}</strong>
+      <span>Reminders</span>
+    </div>
+    <div class="mini-stat">
+      <strong>${state.syncQueue.length}</strong>
+      <span>Queued</span>
+    </div>
+  `;
 }
 
 function render() {
@@ -511,6 +548,7 @@ function openModal(templateId, title, context = null) {
   if (!template) return;
   modalContext = context;
   els.modalTitle.textContent = title;
+  els.modalModeLabel.textContent = context?.mode === "edit" ? "Editing existing" : "Create new";
   els.modalContent.innerHTML = "";
   els.modalContent.appendChild(template.content.cloneNode(true));
   els.modalRoot.classList.remove("hidden");
@@ -561,6 +599,13 @@ function populateModalForm(context) {
 
   const submitButton = form.querySelector('button[type="submit"]');
   if (submitButton && context.submitLabel) submitButton.textContent = context.submitLabel;
+}
+
+function requireVehicles(actionLabel) {
+  if (state.vehicles.length) return true;
+  showToast(`Add a vehicle before you ${actionLabel}.`);
+  openModal("vehicleModal", "Add vehicle");
+  return false;
 }
 
 function upsertVehicle(vehicle) {
@@ -700,6 +745,7 @@ function deleteItem(type, itemId) {
   enqueueSync(syncEventName(type, "deleted"), { id: itemId });
   saveState();
   render();
+  showToast(`${labelMap[type][0].toUpperCase()}${labelMap[type].slice(1)} deleted.`);
 }
 
 function exportData() {
@@ -716,10 +762,15 @@ function exportData() {
   link.download = `wahane-export-${TODAY}.json`;
   link.click();
   URL.revokeObjectURL(url);
+  showToast("Backup exported.");
 }
 
 function importData(file) {
   if (!file) return;
+  if (!window.confirm("Importing will replace the current local data on this device. Continue?")) {
+    els.importDataInput.value = "";
+    return;
+  }
   const reader = new FileReader();
   reader.addEventListener("load", () => {
     try {
@@ -728,9 +779,9 @@ function importData(file) {
       state = nextState;
       saveState();
       render();
-      window.alert("Data imported successfully.");
+      showToast("Data imported successfully.");
     } catch (error) {
-      window.alert(error.message || "Could not import that file.");
+      showToast(error.message || "Could not import that file.");
     } finally {
       els.importDataInput.value = "";
     }
@@ -765,6 +816,7 @@ function bindModalForms() {
       saveState();
       render();
       closeModal();
+      showToast(modalContext ? "Vehicle updated." : "Vehicle added.");
     });
   }
 
@@ -802,6 +854,7 @@ function bindModalForms() {
       saveState();
       render();
       closeModal();
+      showToast(modalContext ? "Maintenance record updated." : "Maintenance record added.");
     });
   }
 
@@ -825,6 +878,7 @@ function bindModalForms() {
       saveState();
       render();
       closeModal();
+      showToast(modalContext ? "Reminder updated." : "Reminder added.");
     });
   }
 
@@ -845,6 +899,7 @@ function bindModalForms() {
       saveState();
       render();
       closeModal();
+      showToast(modalContext ? "Service center updated." : "Service center added.");
     });
   }
 }
@@ -854,6 +909,7 @@ function completeReminder(reminderId) {
   enqueueSync("reminder.completed", { reminderId });
   saveState();
   render();
+  showToast("Reminder marked complete.");
 }
 
 function toggleAccountMode() {
@@ -881,6 +937,9 @@ document.addEventListener("click", (event) => {
   const modalTrigger = event.target.closest("[data-open-modal]");
   if (modalTrigger) {
     const templateId = modalTrigger.dataset.openModal;
+    if ((templateId === "maintenanceModal" || templateId === "reminderModal") && !requireVehicles(templateId === "maintenanceModal" ? "log maintenance" : "add a reminder")) {
+      return;
+    }
     const titleMap = {
       vehicleModal: "Add vehicle",
       maintenanceModal: "Log maintenance",
@@ -922,6 +981,8 @@ document.getElementById("closeModal").addEventListener("click", closeModal);
 document.getElementById("profileButton").addEventListener("click", toggleAccountMode);
 els.exportDataButton.addEventListener("click", exportData);
 els.importDataButton.addEventListener("click", () => els.importDataInput.click());
+els.drawerExportDataButton.addEventListener("click", exportData);
+els.drawerImportDataButton.addEventListener("click", () => els.importDataInput.click());
 els.importDataInput.addEventListener("change", (event) => importData(event.target.files[0]));
 document.getElementById("menuButton").addEventListener("click", () => {
   const expanded = els.menuButton.getAttribute("aria-expanded") === "true";
@@ -934,6 +995,10 @@ document.getElementById("menuButton").addEventListener("click", () => {
 document.getElementById("closeDrawer").addEventListener("click", closeDrawer);
 document.getElementById("drawerBackdrop").addEventListener("click", closeDrawer);
 document.getElementById("completeNextReminder").addEventListener("click", () => {
+  if (!state.reminders.length) {
+    showToast("No reminders to complete yet.");
+    return;
+  }
   const next = state.reminders
     .map((reminder) => ({ ...reminder, computedStatus: computeReminderStatus(reminder) }))
     .sort((a, b) => {

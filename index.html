@@ -24,11 +24,6 @@
         </div>
       </div>
       <div class="topbar-actions">
-        <div class="data-actions">
-          <button class="ghost-button" id="exportDataButton" type="button">Export Data</button>
-          <button class="ghost-button" id="importDataButton" type="button">Import Data</button>
-          <input id="importDataInput" type="file" accept="application/json" hidden>
-        </div>
         <nav class="desktop-nav" aria-label="Primary">
           <button class="nav-item active" type="button" data-nav="dashboard">Dashboard</button>
           <button class="nav-item" type="button" data-nav="vehicles">Vehicles</button>
@@ -36,7 +31,6 @@
           <button class="nav-item" type="button" data-nav="reminders">Reminders</button>
           <button class="nav-item" type="button" data-nav="service-centers">Centers</button>
         </nav>
-        <button class="ghost-button" id="profileButton" type="button">Guest Mode</button>
       </div>
     </header>
 
@@ -50,6 +44,22 @@
         <div class="hero-actions">
           <button class="primary-button" type="button" data-open-modal="vehicleModal">Add Vehicle</button>
           <button class="secondary-button" type="button" data-open-modal="maintenanceModal">Log Service</button>
+        </div>
+        <div class="hero-data-strip" id="heroDataStrip"></div>
+      </section>
+
+      <section class="data-hub surface">
+        <div class="section-header">
+          <div>
+            <p class="eyebrow">Data Tools</p>
+            <h3>Backup and restore</h3>
+          </div>
+        </div>
+        <div class="data-actions data-actions-panel">
+          <button class="ghost-button" id="exportDataButton" type="button">Export Data</button>
+          <button class="ghost-button" id="importDataButton" type="button">Import Data</button>
+          <button class="ghost-button" id="profileButton" type="button">Guest</button>
+          <input id="importDataInput" type="file" accept="application/json" hidden>
         </div>
       </section>
 
@@ -191,6 +201,10 @@
       <button class="drawer-link" type="button" data-nav="reminders">Reminders</button>
       <button class="drawer-link" type="button" data-nav="service-centers">Service Centers</button>
     </nav>
+    <div class="drawer-data-tools">
+      <button class="ghost-button" id="drawerExportDataButton" type="button">Export Data</button>
+      <button class="ghost-button" id="drawerImportDataButton" type="button">Import Data</button>
+    </div>
   </aside>
 
   <div class="modal-backdrop hidden" id="modalRoot">
@@ -198,6 +212,7 @@
       <div class="section-header">
         <div>
           <p class="eyebrow">Quick entry</p>
+          <p class="modal-mode" id="modalModeLabel">Create new</p>
           <h2 id="modalTitle">Add item</h2>
         </div>
         <button class="ghost-button" id="closeModal" type="button">Close</button>
@@ -205,6 +220,8 @@
       <div id="modalContent"></div>
     </div>
   </div>
+
+  <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
 
   <template id="vehicleModal">
     <form class="form-grid" id="vehicleForm">

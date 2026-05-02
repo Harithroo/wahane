@@ -74,7 +74,8 @@ button {
 .vehicle-switcher,
 .section-card,
 .modal-panel,
-.hero {
+.hero,
+.data-hub {
   padding: var(--space-5);
 }
 
@@ -83,6 +84,7 @@ button {
   top: 0.75rem;
   z-index: 20;
   margin-top: 0.75rem;
+  padding-block: 0.9rem;
 }
 
 .topbar,
@@ -113,6 +115,11 @@ button {
   gap: var(--space-3);
 }
 
+.topbar-actions,
+.desktop-nav {
+  justify-content: flex-end;
+}
+
 .app-main {
   display: grid;
   gap: var(--space-4);
@@ -131,6 +138,33 @@ button {
 .hero p,
 .hero h2 {
   max-width: 36rem;
+}
+
+.hero-data-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.mini-stat {
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.mini-stat strong,
+.mini-stat span {
+  display: block;
+}
+
+.mini-stat strong {
+  font-size: 1.35rem;
+}
+
+.mini-stat span {
+  color: rgba(248, 250, 252, 0.74);
+  font-size: 0.84rem;
 }
 
 .eyebrow {
@@ -208,6 +242,12 @@ button {
 
 .text-button {
   padding-inline: 0.6rem;
+}
+
+.modal-mode {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
 }
 
 .page-header {
@@ -346,6 +386,10 @@ button {
   flex-wrap: wrap;
 }
 
+.data-actions-panel {
+  margin-top: var(--space-3);
+}
+
 .card-actions {
   margin-top: var(--space-3);
   justify-content: flex-end;
@@ -437,6 +481,12 @@ textarea {
   gap: var(--space-3);
 }
 
+.drawer-data-tools {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+
 .drawer-link {
   width: 100%;
   text-align: left;
@@ -449,6 +499,23 @@ textarea {
   text-align: center;
   border: 1px dashed var(--border);
   border-radius: var(--radius-md);
+}
+
+.toast {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 60;
+  max-width: min(22rem, calc(100vw - 2rem));
+  padding: 0.9rem 1rem;
+  border-radius: 16px;
+  background: #153243;
+  color: #f8fafc;
+  box-shadow: var(--shadow);
+}
+
+.toast.visible {
+  display: block;
 }
 
 @media (max-width: 760px) {
@@ -467,6 +534,29 @@ textarea {
 
   .topbar {
     top: 0.5rem;
+    padding-block: var(--space-4);
+  }
+
+  .hero,
+  .topbar,
+  .vehicle-switcher,
+  .section-card,
+  .modal-panel,
+  .data-hub {
+    padding: var(--space-4);
+  }
+
+  .hero {
+    gap: var(--space-4);
+  }
+
+  .hero h2 {
+    font-size: 1.45rem;
+    line-height: 1.2;
+  }
+
+  .hero-copy p:last-child {
+    font-size: 0.95rem;
   }
 
   .brand-lockup,
@@ -492,6 +582,23 @@ textarea {
   .form-grid,
   .quick-actions {
     grid-template-columns: 1fr;
+  }
+
+  .hero-data-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2);
+  }
+
+  .mini-stat {
+    padding: 0.75rem;
+  }
+
+  .mini-stat strong {
+    font-size: 1.1rem;
+  }
+
+  .mini-stat span {
+    font-size: 0.78rem;
   }
 
   .form-grid {
