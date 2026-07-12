@@ -297,6 +297,96 @@ function normalizeImportedState(candidate) {
   };
 }
 
+function parseCsvRecords(text) {
+  const rows = [];
+  let row = [], field = "", inQuotes = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+    if (inQuotes) {
+      if (char === '"' && text[i + 1] === '"') { field += '"'; i += 1; }
+      else if (char === '"') inQuotes = false;
+      else field += char;
+    } else if (char === '"') {
+      inQuotes = true;
+    } else if (char === ",") {
+      row.push(field); field = "";
+    } else if (char === "\n" || char === "\r") {
+      if (field !== "" || row.length) { row.push(field); rows.push(row); row = []; field = ""; }
+    } else {
+      field += char;
+    }
+  }
+  if (field !== "" || row.length) { row.push(field); rows.push(row); }
+  if (rows.length < 2) return [];
+
+  const headers = rows[0].map((header) => header.trim().toLowerCase());
+  return rows.slice(1).map((cells) => {
+    const entry = {};
+    headers.forEach((header, index) => { entry[header] = (cells[index] || "").trim(); });
+    return entry;
+  });
+}
+
+function isSimpleRecordList(candidate) {
+  return Array.isArray(candidate) && candidate.length > 0 && candidate.every((item) => (
+    item && typeof item === "object" && (item.date || item.Date) && (item.description || item.Description)
+  ));
+}
+
+function shortTitleFromDescription(description) {
+  const firstPart = String(description).split(/[,:]/)[0].trim();
+  return firstPart.length > 40 ? `${firstPart.slice(0, 40)}…` : firstPart || "Maintenance";
+}
+
+function mergeSimpleRecords(entries, vehicleId) {
+  let added = 0;
+  let skipped = 0;
+
+  for (const entry of entries) {
+    const date = String(entry.date || entry.Date || "").slice(0, 10);
+    const description = String(entry.description || entry.Description || "").trim();
+    if (!date || !description) { skipped += 1; continue; }
+
+    const category = String(entry.category || entry.Category || "").trim();
+    const odometerRaw = entry.odometer ?? entry.Odometer;
+    const odometer = odometerRaw === null || odometerRaw === undefined || odometerRaw === "" ? "" : Number(odometerRaw);
+    const costRaw = entry.cost ?? entry.Cost ?? entry.totalCost;
+    const cost = costRaw === null || costRaw === undefined || costRaw === "" ? "" : Number(costRaw);
+
+    const duplicate = state.maintenanceRecords.some((record) => (
+      record.vehicleId === vehicleId && record.performedAt === date && record.notes === description
+    ));
+    if (duplicate) { skipped += 1; continue; }
+
+    const record = {
+      id: id("maint"),
+      vehicleId,
+      serviceType: shortTitleFromDescription(description),
+      category,
+      performedAt: date,
+      odometer,
+      totalCost: cost,
+      notes: description,
+      serviceCenterId: "",
+      nextDueDate: "",
+      nextDueMileage: ""
+    };
+    state.maintenanceRecords.push(record);
+    enqueueSync(syncEventName("maintenance", "created"), record);
+    added += 1;
+  }
+
+  const vehicle = getVehicle(vehicleId);
+  if (vehicle) {
+    const maxOdometer = state.maintenanceRecords
+      .filter((record) => record.vehicleId === vehicleId && record.odometer !== "" && record.odometer !== null)
+      .reduce((max, record) => Math.max(max, Number(record.odometer)), Number(vehicle.currentOdometer) || 0);
+    vehicle.currentOdometer = maxOdometer;
+  }
+
+  return { added, skipped };
+}
+
 function renderSelectOptions(select, includeBlank = false) {
   if (!select) return;
   const activeId = state.activeVehicleId || "";
@@ -353,7 +443,7 @@ function renderDashboard() {
           <span>${currency(record.totalCost)}</span>
         </div>
         <div class="meta-row">
-          <span>${vehicle ? vehicle.nickname : "Vehicle"} | ${record.odometer} ${state.user.unitDistance}</span>
+          <span>${vehicle ? vehicle.nickname : "Vehicle"}${record.odometer === "" || record.odometer === null ? "" : ` | ${record.odometer} ${state.user.unitDistance}`}</span>
           <span>${record.performedAt}</span>
         </div>
         <div class="meta-row">
@@ -428,12 +518,12 @@ function renderMaintenance() {
     return `
       <article class="list-card">
         <div class="detail-row">
-          <strong>${record.serviceType}</strong>
+          <strong>${record.serviceType}${record.category ? ` <span class="status-pill ${record.category === "Repair" ? "status-soon" : "status-healthy"}">${record.category}</span>` : ""}</strong>
           <span>${currency(record.totalCost)}</span>
         </div>
         <div class="meta-row">
           <span>${record.performedAt}</span>
-          <span>${record.odometer} ${state.user.unitDistance}</span>
+          <span>${record.odometer === "" || record.odometer === null ? "-" : `${record.odometer} ${state.user.unitDistance}`}</span>
         </div>
         <div class="meta-row">
           <span>${center ? center.name : "No service center selected"}</span>
@@ -767,16 +857,32 @@ function exportData() {
 
 function importData(file) {
   if (!file) return;
-  if (!window.confirm("Importing will replace the current local data on this device. Continue?")) {
-    els.importDataInput.value = "";
-    return;
-  }
   const reader = new FileReader();
   reader.addEventListener("load", () => {
     try {
-      const parsed = JSON.parse(reader.result);
-      const nextState = normalizeImportedState(parsed.data || parsed);
-      state = nextState;
+      let parsed = null;
+      try {
+        parsed = JSON.parse(reader.result);
+      } catch {
+        parsed = parseCsvRecords(String(reader.result));
+      }
+
+      if (isSimpleRecordList(parsed)) {
+        const vehicle = activeVehicle();
+        if (!vehicle) {
+          showToast("Add a vehicle first, then import its records.");
+          return;
+        }
+        if (!window.confirm(`Add ${parsed.length} maintenance records to "${vehicle.nickname}"? Existing data is kept.`)) return;
+        const { added, skipped } = mergeSimpleRecords(parsed, vehicle.id);
+        saveState();
+        render();
+        showToast(`${added} records imported${skipped ? `, ${skipped} skipped (duplicates or incomplete)` : ""}.`);
+        return;
+      }
+
+      if (!window.confirm("This looks like a full backup. Importing will replace the current local data on this device. Continue?")) return;
+      state = normalizeImportedState(parsed.data || parsed);
       saveState();
       render();
       showToast("Data imported successfully.");
@@ -829,6 +935,7 @@ function bindModalForms() {
         id: modalContext?.itemId || id("maint"),
         vehicleId: data.get("vehicleId"),
         serviceType: data.get("serviceType"),
+        category: data.get("category") || "",
         performedAt: data.get("performedAt"),
         odometer: Number(data.get("odometer")),
         totalCost: data.get("totalCost"),
