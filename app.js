@@ -7,6 +7,7 @@ const defaultState = {
     mode: "guest",
     name: "Guest Driver",
     unitDistance: "mi",
+    currency: "LKR",
     reminderPreference: "push-ready",
     lastSyncedAt: null
   },
@@ -26,7 +27,18 @@ function id(prefix) {
 function loadState() {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (raw) {
-    return JSON.parse(raw);
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        return {
+          ...defaultState,
+          ...parsed,
+          user: { ...defaultState.user, ...(parsed.user || {}) }
+        };
+      }
+    } catch {
+      console.warn("Stored data was corrupted; starting fresh. Restore from an exported backup if you have one.");
+    }
   }
 
   const seed = {
@@ -146,11 +158,7 @@ let state = loadState();
 let modalContext = null;
 
 const els = {
-  menuButton: document.getElementById("menuButton"),
-  closeDrawer: document.getElementById("closeDrawer"),
-  drawerBackdrop: document.getElementById("drawerBackdrop"),
-  mobileDrawer: document.getElementById("mobileDrawer"),
-  profileButton: document.getElementById("profileButton"),
+  heroHeadline: document.getElementById("heroHeadline"),
   heroSummary: document.getElementById("heroSummary"),
   heroDataStrip: document.getElementById("heroDataStrip"),
   activeVehicleName: document.getElementById("activeVehicleName"),
@@ -162,6 +170,9 @@ const els = {
   serviceCenterShortcuts: document.getElementById("serviceCenterShortcuts"),
   vehiclesViewList: document.getElementById("vehiclesViewList"),
   maintenanceViewList: document.getElementById("maintenanceViewList"),
+  maintenanceInsights: document.getElementById("maintenanceInsights"),
+  maintenanceFilters: document.getElementById("maintenanceFilters"),
+  currencySelect: document.getElementById("currencySelect"),
   remindersViewList: document.getElementById("remindersViewList"),
   serviceCentersViewList: document.getElementById("serviceCentersViewList"),
   modalRoot: document.getElementById("modalRoot"),
@@ -171,8 +182,6 @@ const els = {
   exportDataButton: document.getElementById("exportDataButton"),
   importDataButton: document.getElementById("importDataButton"),
   importDataInput: document.getElementById("importDataInput"),
-  drawerExportDataButton: document.getElementById("drawerExportDataButton"),
-  drawerImportDataButton: document.getElementById("drawerImportDataButton"),
   toast: document.getElementById("toast")
 };
 
@@ -238,9 +247,28 @@ function vehicleSummary(vehicle) {
   };
 }
 
+function formatDate(dateText) {
+  if (!dateText) return "";
+  const date = new Date(`${dateText}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return esc(dateText);
+  return date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+
+function esc(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  })[char]);
+}
+
 function currency(value) {
   if (value === "" || value === null || value === undefined) return "-";
-  return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(Number(value));
+  const code = state.user.currency || "LKR";
+  const noCents = ["LKR", "JPY", "IDR", "KRW", "VND"].includes(code);
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: code,
+    maximumFractionDigits: noCents ? 0 : 2
+  }).format(Number(value));
 }
 
 function emptyState(text) {
@@ -249,15 +277,29 @@ function emptyState(text) {
 
 let toastTimer = null;
 
-function showToast(message) {
-  els.toast.textContent = message;
-  els.toast.classList.remove("hidden");
-  els.toast.classList.add("visible");
+function hideToastAfter(delay) {
   window.clearTimeout(toastTimer);
   toastTimer = window.setTimeout(() => {
     els.toast.classList.remove("visible");
     els.toast.classList.add("hidden");
-  }, 2600);
+  }, delay);
+}
+
+function showToast(message) {
+  els.toast.textContent = message;
+  els.toast.classList.remove("hidden");
+  els.toast.classList.add("visible");
+  hideToastAfter(2600);
+}
+
+function showUndoToast(message) {
+  els.toast.innerHTML = `${esc(message)} <button class="toast-undo" type="button" id="undoDeleteButton">Undo</button>`;
+  els.toast.classList.remove("hidden");
+  els.toast.classList.add("visible");
+  document.getElementById("undoDeleteButton").addEventListener("click", () => {
+    undoDelete();
+  });
+  hideToastAfter(6000);
 }
 
 function actionButtons(type, itemId, includeComplete = false) {
@@ -393,7 +435,7 @@ function renderSelectOptions(select, includeBlank = false) {
   const options = [];
   if (includeBlank) options.push(`<option value="">None</option>`);
   for (const vehicle of state.vehicles) {
-    options.push(`<option value="${vehicle.id}" ${vehicle.id === activeId ? "selected" : ""}>${vehicle.nickname} | ${vehicle.year} ${vehicle.make}</option>`);
+    options.push(`<option value="${esc(vehicle.id)}" ${vehicle.id === activeId ? "selected" : ""}>${esc(vehicle.nickname)} | ${esc(vehicle.year)} ${esc(vehicle.make)}</option>`);
   }
   select.innerHTML = options.join("");
 }
@@ -422,12 +464,12 @@ function renderDashboard() {
     return `
       <article class="list-card">
         <div class="detail-row">
-          <strong>${item.title}</strong>
+          <strong>${esc(item.title)}</strong>
           <span class="status-pill ${item.computedStatus === "overdue" ? "status-overdue" : "status-soon"}">${item.computedStatus === "overdue" ? "Overdue" : "Due soon"}</span>
         </div>
         <div class="meta-row">
-          <span>${vehicle ? vehicle.nickname : "Vehicle"}</span>
-          <span>${item.dueDate || "No date"}${item.dueMileage ? ` | ${item.dueMileage} ${state.user.unitDistance}` : ""}</span>
+          <span>${vehicle ? esc(vehicle.nickname) : "Vehicle"}</span>
+          <span>${formatDate(item.dueDate) || "No date"}${item.dueMileage ? ` | ${esc(item.dueMileage)} ${state.user.unitDistance}` : ""}</span>
         </div>
       </article>`;
   }).join("") : emptyState("No urgent reminders. You're in good shape.");
@@ -439,16 +481,16 @@ function renderDashboard() {
     return `
       <article class="list-card">
         <div class="detail-row">
-          <strong>${record.serviceType}</strong>
+          <strong>${esc(record.serviceType)}</strong>
           <span>${currency(record.totalCost)}</span>
         </div>
         <div class="meta-row">
-          <span>${vehicle ? vehicle.nickname : "Vehicle"}${record.odometer === "" || record.odometer === null ? "" : ` | ${record.odometer} ${state.user.unitDistance}`}</span>
-          <span>${record.performedAt}</span>
+          <span>${vehicle ? esc(vehicle.nickname) : "Vehicle"}${record.odometer === "" || record.odometer === null ? "" : ` | ${esc(record.odometer)} ${state.user.unitDistance}`}</span>
+          <span>${formatDate(record.performedAt)}</span>
         </div>
         <div class="meta-row">
-          <span>${center ? center.name : "No service center"}</span>
-          <span>${record.nextDueDate || "No next date"}</span>
+          <span>${center ? esc(center.name) : "No service center"}</span>
+          <span>${record.nextDueDate ? `Next: ${formatDate(record.nextDueDate)}` : "No next date"}</span>
         </div>
       </article>`;
   }).join("") : emptyState("Log your first service record to build maintenance history.");
@@ -462,23 +504,23 @@ function renderDashboard() {
     return `
       <article class="status-card">
         <div class="detail-row">
-          <strong>${vehicle.nickname}</strong>
+          <strong>${esc(vehicle.nickname)}</strong>
           <span class="status-pill ${statusClass}">${statusLabel}</span>
         </div>
-        <p>${vehicle.year} ${vehicle.make} ${vehicle.model}</p>
+        <p>${esc(vehicle.year)} ${esc(vehicle.make)} ${esc(vehicle.model)}</p>
         <div class="meta-row">
-          <span>${vehicle.currentOdometer} ${state.user.unitDistance}</span>
-          <span>${summary.latestRecord ? `Last: ${summary.latestRecord.serviceType}` : "No service yet"}</span>
+          <span>${esc(vehicle.currentOdometer)} ${state.user.unitDistance}</span>
+          <span>${summary.latestRecord ? `Last: ${esc(summary.latestRecord.serviceType)}` : "No service yet"}</span>
         </div>
       </article>`;
   }).join("") : emptyState("Add a vehicle to start tracking service, mileage, and reminders.");
 
   els.serviceCenterShortcuts.innerHTML = state.serviceCenters.length ? state.serviceCenters.slice(0, 4).map((center) => `
     <article class="list-card">
-      <strong>${center.name}</strong>
+      <strong>${esc(center.name)}</strong>
       <div class="meta-row">
-        <span>${center.phone || "No phone saved"}</span>
-        <span>${center.addressText || "No address saved"}</span>
+        <span>${esc(center.phone) || "No phone saved"}</span>
+        <span>${esc(center.addressText) || "No address saved"}</span>
       </div>
     </article>
   `).join("") : emptyState("Save a trusted shop for quicker logging later.");
@@ -490,21 +532,78 @@ function renderVehicles() {
     return `
       <article class="status-card">
         <div class="detail-row">
-          <strong>${vehicle.nickname}</strong>
-          <button class="text-button" type="button" data-activate-vehicle="${vehicle.id}">Set Active</button>
+          <strong>${esc(vehicle.nickname)}</strong>
+          <button class="text-button" type="button" data-activate-vehicle="${esc(vehicle.id)}">Set Active</button>
         </div>
-        <p>${vehicle.year} ${vehicle.make} ${vehicle.model}</p>
+        <p>${esc(vehicle.year)} ${esc(vehicle.make)} ${esc(vehicle.model)}</p>
         <div class="meta-row">
-          <span>${vehicle.plate || "No plate saved"}</span>
-          <span>${vehicle.currentOdometer} ${state.user.unitDistance}</span>
+          <span>${esc(vehicle.plate) || "No plate saved"}</span>
+          <span>${esc(vehicle.currentOdometer)} ${state.user.unitDistance}</span>
         </div>
         <div class="meta-row">
-          <span>${summary.latestRecord ? `Last service: ${summary.latestRecord.performedAt}` : "No maintenance logged"}</span>
+          <span>${summary.latestRecord ? `Last service: ${formatDate(summary.latestRecord.performedAt)}` : "No maintenance logged"}</span>
           <span>${vehicle.defaultServiceIntervals.mileage || "-"} ${state.user.unitDistance} interval</span>
         </div>
         ${actionButtons("vehicle", vehicle.id)}
       </article>`;
   }).join("") : emptyState("Your garage is empty. Add the first vehicle and the app will tailor the dashboard around it.");
+}
+
+let maintenanceFilter = "all";
+
+function sumCosts(records) {
+  return records.reduce((total, record) => {
+    const cost = Number(record.totalCost);
+    return Number.isFinite(cost) ? total + cost : total;
+  }, 0);
+}
+
+function renderMaintenanceInsights(records) {
+  if (!els.maintenanceInsights) return;
+  if (!records.length) {
+    els.maintenanceInsights.innerHTML = "";
+    return;
+  }
+  const serviceRecords = records.filter((record) => record.category === "Service");
+  const repairRecords = records.filter((record) => record.category === "Repair");
+  els.maintenanceInsights.innerHTML = `
+    <div class="insight-card">
+      <span>Total spent</span>
+      <strong>${currency(sumCosts(records))}</strong>
+      <small>${records.length} records</small>
+    </div>
+    <div class="insight-card">
+      <span>Service</span>
+      <strong>${currency(sumCosts(serviceRecords))}</strong>
+      <small>${serviceRecords.length} records</small>
+    </div>
+    <div class="insight-card">
+      <span>Repairs</span>
+      <strong>${currency(sumCosts(repairRecords))}</strong>
+      <small>${repairRecords.length} records</small>
+    </div>
+  `;
+}
+
+function maintenanceCard(record) {
+  const center = getServiceCenter(record.serviceCenterId);
+  return `
+    <article class="list-card">
+      <div class="detail-row">
+        <strong>${esc(record.serviceType)}${record.category ? ` <span class="status-pill ${record.category === "Repair" ? "status-soon" : "status-healthy"}">${esc(record.category)}</span>` : ""}</strong>
+        <span>${currency(record.totalCost)}</span>
+      </div>
+      <div class="meta-row">
+        <span>${formatDate(record.performedAt)}</span>
+        <span>${record.odometer === "" || record.odometer === null ? "-" : `${esc(record.odometer)} ${state.user.unitDistance}`}</span>
+      </div>
+      <div class="meta-row">
+        <span>${center ? esc(center.name) : "No service center selected"}</span>
+        <span>${record.nextDueDate ? `Next: ${formatDate(record.nextDueDate)}` : "No next due date"}${record.nextDueMileage ? ` | ${esc(record.nextDueMileage)} ${state.user.unitDistance}` : ""}</span>
+      </div>
+      ${record.notes ? `<p>${esc(record.notes)}</p>` : ""}
+      ${actionButtons("maintenance", record.id)}
+    </article>`;
 }
 
 function renderMaintenance() {
@@ -513,26 +612,56 @@ function renderMaintenance() {
     .filter((record) => !current || record.vehicleId === current.id)
     .sort((a, b) => new Date(b.performedAt) - new Date(a.performedAt));
 
-  els.maintenanceViewList.innerHTML = records.length ? records.map((record) => {
-    const center = getServiceCenter(record.serviceCenterId);
-    return `
-      <article class="list-card">
-        <div class="detail-row">
-          <strong>${record.serviceType}${record.category ? ` <span class="status-pill ${record.category === "Repair" ? "status-soon" : "status-healthy"}">${record.category}</span>` : ""}</strong>
-          <span>${currency(record.totalCost)}</span>
-        </div>
-        <div class="meta-row">
-          <span>${record.performedAt}</span>
-          <span>${record.odometer === "" || record.odometer === null ? "-" : `${record.odometer} ${state.user.unitDistance}`}</span>
-        </div>
-        <div class="meta-row">
-          <span>${center ? center.name : "No service center selected"}</span>
-          <span>${record.nextDueDate || "No next due date"}${record.nextDueMileage ? ` | ${record.nextDueMileage} ${state.user.unitDistance}` : ""}</span>
-        </div>
-        ${record.notes ? `<p>${record.notes}</p>` : ""}
-        ${actionButtons("maintenance", record.id)}
-      </article>`;
-  }).join("") : emptyState("No maintenance records for this vehicle yet.");
+  renderMaintenanceInsights(records);
+
+  if (els.maintenanceFilters) {
+    const counts = {
+      all: records.length,
+      Service: records.filter((record) => record.category === "Service").length,
+      Repair: records.filter((record) => record.category === "Repair").length
+    };
+    els.maintenanceFilters.innerHTML = [
+      { key: "all", label: "All" },
+      { key: "Service", label: "Service" },
+      { key: "Repair", label: "Repair" }
+    ].map(({ key, label }) => `
+      <button class="chip ${maintenanceFilter === key ? "active" : ""}" type="button" data-maintenance-filter="${key}">
+        ${label} <span class="chip-count">${counts[key]}</span>
+      </button>
+    `).join("");
+  }
+
+  const filtered = maintenanceFilter === "all"
+    ? records
+    : records.filter((record) => record.category === maintenanceFilter);
+
+  if (!filtered.length) {
+    els.maintenanceViewList.innerHTML = emptyState(
+      records.length ? "No records match this filter." : "No maintenance records for this vehicle yet."
+    );
+    return;
+  }
+
+  const groups = [];
+  for (const record of filtered) {
+    const year = (record.performedAt || "").slice(0, 4) || "Undated";
+    const group = groups[groups.length - 1];
+    if (group && group.year === year) {
+      group.records.push(record);
+    } else {
+      groups.push({ year, records: [record] });
+    }
+  }
+
+  els.maintenanceViewList.innerHTML = groups.map((group) => `
+    <div class="year-group">
+      <div class="year-header">
+        <h4>${esc(group.year)}</h4>
+        <span>${group.records.length} ${group.records.length === 1 ? "record" : "records"} | ${currency(sumCosts(group.records))}</span>
+      </div>
+      ${group.records.map(maintenanceCard).join("")}
+    </div>
+  `).join("");
 }
 
 function renderReminders() {
@@ -548,14 +677,14 @@ function renderReminders() {
   els.remindersViewList.innerHTML = reminders.length ? reminders.map((reminder) => `
     <article class="list-card">
       <div class="detail-row">
-        <strong>${reminder.title}</strong>
+        <strong>${esc(reminder.title)}</strong>
         <span class="status-pill ${reminder.computedStatus === "overdue" ? "status-overdue" : reminder.computedStatus === "due-soon" ? "status-soon" : "status-healthy"}">
           ${reminder.computedStatus === "due-soon" ? "Due soon" : reminder.computedStatus === "overdue" ? "Overdue" : "On track"}
         </span>
       </div>
       <div class="meta-row">
-        <span>${reminder.relatedServiceType || "General"}</span>
-        <span>${reminder.dueDate || "No date"}${reminder.dueMileage ? ` | ${reminder.dueMileage} ${state.user.unitDistance}` : ""}</span>
+        <span>${esc(reminder.relatedServiceType) || "General"}</span>
+        <span>${formatDate(reminder.dueDate) || "No date"}${reminder.dueMileage ? ` | ${esc(reminder.dueMileage)} ${state.user.unitDistance}` : ""}</span>
       </div>
       <div class="meta-row">
         <span>Lead time: ${reminder.leadTime || 7} days</span>
@@ -568,24 +697,51 @@ function renderReminders() {
 function renderServiceCenters() {
   els.serviceCentersViewList.innerHTML = state.serviceCenters.length ? state.serviceCenters.map((center) => `
     <article class="list-card">
-      <strong>${center.name}</strong>
+      <strong>${esc(center.name)}</strong>
       <div class="meta-row">
-        <span>${center.phone || "No phone saved"}</span>
-        <span>${center.addressText || "No address saved"}</span>
+        <span>${esc(center.phone) || "No phone saved"}</span>
+        <span>${esc(center.addressText) || "No address saved"}</span>
       </div>
-      ${center.notes ? `<p>${center.notes}</p>` : ""}
+      ${center.notes ? `<p>${esc(center.notes)}</p>` : ""}
       ${actionButtons("serviceCenter", center.id)}
     </article>
   `).join("") : emptyState("Save service centers you trust so future records are faster to log.");
 }
 
 function renderHero() {
-  const overdue = state.reminders.filter((item) => computeReminderStatus(item) === "overdue").length;
-  const soon = state.reminders.filter((item) => computeReminderStatus(item) === "due-soon").length;
-  els.profileButton.textContent = state.user.mode === "guest" ? "Guest" : "Account";
-  els.heroSummary.textContent = overdue
-    ? `${overdue} overdue and ${soon} due-soon items need attention. Data stays local-first and offline-ready.`
-    : `${soon} upcoming reminders across ${state.vehicles.length} vehicles. Guest data is stored locally and ready to sync later.`;
+  const ranked = state.reminders
+    .map((reminder) => ({ ...reminder, computedStatus: computeReminderStatus(reminder) }))
+    .filter((reminder) => reminder.computedStatus !== "healthy" || reminder.dueDate || reminder.dueMileage)
+    .sort((a, b) => {
+      const order = { overdue: 0, "due-soon": 1, healthy: 2 };
+      if (order[a.computedStatus] !== order[b.computedStatus]) return order[a.computedStatus] - order[b.computedStatus];
+      return (a.dueDate || "9999") < (b.dueDate || "9999") ? -1 : 1;
+    });
+
+  const next = ranked[0];
+  if (!state.vehicles.length) {
+    els.heroHeadline.textContent = "Add your first vehicle to get started.";
+  } else if (!next) {
+    els.heroHeadline.textContent = "You're all caught up. Nothing is due.";
+  } else {
+    const vehicle = getVehicle(next.vehicleId);
+    const when = next.computedStatus === "overdue"
+      ? `overdue since ${formatDate(next.dueDate) || "a while"}`
+      : next.dueDate
+        ? `due ${formatDate(next.dueDate)}`
+        : `due at ${next.dueMileage} ${state.user.unitDistance}`;
+    els.heroHeadline.textContent = `Next up: ${next.title}${vehicle ? ` (${vehicle.nickname})` : ""}, ${when}.`;
+  }
+
+  const thisYear = String(new Date().getFullYear());
+  const yearRecords = state.maintenanceRecords.filter((record) => (record.performedAt || "").startsWith(thisYear));
+  const yearSpend = yearRecords.reduce((total, record) => {
+    const cost = Number(record.totalCost);
+    return Number.isFinite(cost) ? total + cost : total;
+  }, 0);
+  els.heroSummary.textContent = yearRecords.length
+    ? `Spent ${currency(yearSpend)} on ${yearRecords.length} services so far in ${thisYear}. All data stays on this device.`
+    : `No services logged yet in ${thisYear}. All data stays on this device.`;
   els.heroDataStrip.innerHTML = `
     <div class="mini-stat">
       <strong>${state.vehicles.length}</strong>
@@ -607,6 +763,7 @@ function renderHero() {
 }
 
 function render() {
+  if (els.currencySelect) els.currencySelect.value = state.user.currency || "LKR";
   renderHero();
   renderVehicleSwitcher();
   renderDashboard();
@@ -621,7 +778,7 @@ function render() {
   document.querySelectorAll(".nav-item").forEach((item) => {
     item.classList.toggle("active", item.dataset.nav === state.activeView);
   });
-  document.querySelectorAll(".drawer-link").forEach((item) => {
+  document.querySelectorAll(".tab-item").forEach((item) => {
     item.classList.toggle("active", item.dataset.nav === state.activeView);
   });
 }
@@ -630,7 +787,6 @@ function navigate(view) {
   state.activeView = view;
   saveState();
   render();
-  closeDrawer();
 }
 
 function openModal(templateId, title, context = null) {
@@ -648,7 +804,7 @@ function openModal(templateId, title, context = null) {
 
   const centerSelect = els.modalContent.querySelector('select[name="serviceCenterId"]');
   if (centerSelect) {
-    centerSelect.innerHTML = `<option value="">None</option>${state.serviceCenters.map((center) => `<option value="${center.id}">${center.name}</option>`).join("")}`;
+    centerSelect.innerHTML = `<option value="">None</option>${state.serviceCenters.map((center) => `<option value="${esc(center.id)}">${esc(center.name)}</option>`).join("")}`;
   }
 
   const dateInput = els.modalContent.querySelector('input[name="performedAt"]');
@@ -663,18 +819,6 @@ function closeModal() {
   els.modalRoot.classList.add("hidden");
   els.modalContent.innerHTML = "";
   modalContext = null;
-}
-
-function openDrawer() {
-  els.mobileDrawer.classList.remove("hidden");
-  els.drawerBackdrop.classList.remove("hidden");
-  els.menuButton.setAttribute("aria-expanded", "true");
-}
-
-function closeDrawer() {
-  els.mobileDrawer.classList.add("hidden");
-  els.drawerBackdrop.classList.add("hidden");
-  els.menuButton.setAttribute("aria-expanded", "false");
 }
 
 function populateModalForm(context) {
@@ -721,7 +865,9 @@ function upsertMaintenanceRecord(record) {
   }
 
   const vehicle = getVehicle(record.vehicleId);
-  if (vehicle) vehicle.currentOdometer = Math.max(Number(vehicle.currentOdometer), Number(record.odometer));
+  if (vehicle && record.odometer !== "" && record.odometer !== null) {
+    vehicle.currentOdometer = Math.max(Number(vehicle.currentOdometer), Number(record.odometer));
+  }
 }
 
 function upsertReminder(reminder) {
@@ -799,6 +945,8 @@ function editItem(type, itemId) {
   });
 }
 
+let pendingUndo = null;
+
 function deleteItem(type, itemId) {
   const labelMap = {
     vehicle: "vehicle",
@@ -806,9 +954,17 @@ function deleteItem(type, itemId) {
     reminder: "reminder",
     serviceCenter: "service center"
   };
-  if (!window.confirm(`Delete this ${labelMap[type]}? This action cannot be undone.`)) return;
+
+  const snapshot = {
+    vehicles: state.vehicles,
+    maintenanceRecords: state.maintenanceRecords,
+    reminders: state.reminders,
+    serviceCenters: state.serviceCenters,
+    activeVehicleId: state.activeVehicleId
+  };
 
   if (type === "vehicle") {
+    if (!window.confirm("Delete this vehicle and all of its records and reminders?")) return;
     state.vehicles = state.vehicles.filter((vehicle) => vehicle.id !== itemId);
     state.maintenanceRecords = state.maintenanceRecords.filter((record) => record.vehicleId !== itemId);
     state.reminders = state.reminders.filter((reminder) => reminder.vehicleId !== itemId);
@@ -832,10 +988,20 @@ function deleteItem(type, itemId) {
     ));
   }
 
+  pendingUndo = snapshot;
   enqueueSync(syncEventName(type, "deleted"), { id: itemId });
   saveState();
   render();
-  showToast(`${labelMap[type][0].toUpperCase()}${labelMap[type].slice(1)} deleted.`);
+  showUndoToast(`${labelMap[type][0].toUpperCase()}${labelMap[type].slice(1)} deleted.`);
+}
+
+function undoDelete() {
+  if (!pendingUndo) return;
+  Object.assign(state, pendingUndo);
+  pendingUndo = null;
+  saveState();
+  render();
+  showToast("Restored.");
 }
 
 function exportData() {
@@ -937,7 +1103,7 @@ function bindModalForms() {
         serviceType: data.get("serviceType"),
         category: data.get("category") || "",
         performedAt: data.get("performedAt"),
-        odometer: Number(data.get("odometer")),
+        odometer: data.get("odometer") === "" ? "" : Number(data.get("odometer")),
         totalCost: data.get("totalCost"),
         notes: data.get("notes"),
         serviceCenterId: data.get("serviceCenterId"),
@@ -1019,21 +1185,6 @@ function completeReminder(reminderId) {
   showToast("Reminder marked complete.");
 }
 
-function toggleAccountMode() {
-  if (state.user.mode === "guest") {
-    state.user.mode = "authenticated";
-    state.user.name = "Signed-in Driver";
-    state.user.lastSyncedAt = new Date().toISOString();
-    state.syncQueue = [];
-  } else {
-    state.user.mode = "guest";
-    state.user.name = "Guest Driver";
-    state.user.lastSyncedAt = null;
-  }
-  saveState();
-  render();
-}
-
 document.addEventListener("click", (event) => {
   const nav = event.target.closest("[data-nav]");
   if (nav) {
@@ -1054,6 +1205,13 @@ document.addEventListener("click", (event) => {
       serviceCenterModal: "Save service center"
     };
     openModal(templateId, titleMap[templateId] || "Add item");
+    return;
+  }
+
+  const filterChip = event.target.closest("[data-maintenance-filter]");
+  if (filterChip) {
+    maintenanceFilter = filterChip.dataset.maintenanceFilter;
+    renderMaintenance();
     return;
   }
 
@@ -1085,22 +1243,9 @@ document.addEventListener("click", (event) => {
 
 document.getElementById("addVehicleInline").addEventListener("click", () => openModal("vehicleModal", "Add vehicle"));
 document.getElementById("closeModal").addEventListener("click", closeModal);
-document.getElementById("profileButton").addEventListener("click", toggleAccountMode);
 els.exportDataButton.addEventListener("click", exportData);
 els.importDataButton.addEventListener("click", () => els.importDataInput.click());
-els.drawerExportDataButton.addEventListener("click", exportData);
-els.drawerImportDataButton.addEventListener("click", () => els.importDataInput.click());
 els.importDataInput.addEventListener("change", (event) => importData(event.target.files[0]));
-document.getElementById("menuButton").addEventListener("click", () => {
-  const expanded = els.menuButton.getAttribute("aria-expanded") === "true";
-  if (expanded) {
-    closeDrawer();
-  } else {
-    openDrawer();
-  }
-});
-document.getElementById("closeDrawer").addEventListener("click", closeDrawer);
-document.getElementById("drawerBackdrop").addEventListener("click", closeDrawer);
 document.getElementById("completeNextReminder").addEventListener("click", () => {
   if (!state.reminders.length) {
     showToast("No reminders to complete yet.");
@@ -1121,6 +1266,15 @@ els.vehicleSelect.addEventListener("change", (event) => {
   render();
 });
 
+if (els.currencySelect) {
+  els.currencySelect.addEventListener("change", (event) => {
+    state.user.currency = event.target.value;
+    saveState();
+    render();
+    showToast(`Costs now shown in ${state.user.currency}.`);
+  });
+}
+
 els.modalRoot.addEventListener("click", (event) => {
   if (event.target === els.modalRoot) closeModal();
 });
@@ -1128,7 +1282,6 @@ els.modalRoot.addEventListener("click", (event) => {
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     closeModal();
-    closeDrawer();
   }
 });
 
