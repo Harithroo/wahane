@@ -22,7 +22,9 @@
         <nav class="desktop-nav" aria-label="Primary">
           <button class="nav-item active" type="button" data-nav="dashboard">Dashboard</button>
           <button class="nav-item" type="button" data-nav="vehicles">Vehicles</button>
+          <button class="nav-item" type="button" data-nav="fuel">Fuel</button>
           <button class="nav-item" type="button" data-nav="maintenance">Maintenance</button>
+          <button class="nav-item" type="button" data-nav="stats">Stats</button>
           <button class="nav-item" type="button" data-nav="reminders">Reminders</button>
           <button class="nav-item" type="button" data-nav="service-centers">Centers</button>
         </nav>
@@ -87,6 +89,8 @@
               </div>
             </div>
             <div class="quick-actions">
+              <button class="quick-action" type="button" data-open-modal="fuelModal">Add Fill-up</button>
+              <button class="quick-action" type="button" data-open-modal="expenseModal">Add Expense</button>
               <button class="quick-action" type="button" data-open-modal="maintenanceModal">Oil Change</button>
               <button class="quick-action" type="button" data-open-modal="reminderModal">Add Reminder</button>
               <button class="quick-action" type="button" data-open-modal="serviceCenterModal">Save Shop</button>
@@ -142,6 +146,44 @@
         <div id="maintenanceViewList" class="stack-list spacious"></div>
       </section>
 
+      <section class="view" data-view="fuel">
+        <div class="section-header page-header">
+          <div>
+            <p class="eyebrow">Fuel &amp; Expenses</p>
+            <h2>Fill-ups and running costs</h2>
+          </div>
+          <button class="primary-button" type="button" data-open-modal="fuelModal">Add Fill-up</button>
+        </div>
+        <div id="fuelInsights" class="insights-grid"></div>
+        <div id="fuelViewList" class="stack-list spacious"></div>
+        <div class="section-header page-header">
+          <div>
+            <p class="eyebrow">Other Expenses</p>
+            <h2>Tyres, insurance, tax &amp; more</h2>
+          </div>
+          <button class="secondary-button" type="button" data-open-modal="expenseModal">Add Expense</button>
+        </div>
+        <div id="expensesViewList" class="stack-list spacious"></div>
+      </section>
+
+      <section class="view" data-view="stats">
+        <div class="section-header page-header">
+          <div>
+            <p class="eyebrow">Stats &amp; Charts</p>
+            <h2>Vehicle statistics</h2>
+          </div>
+          <select id="statsRangeSelect" aria-label="Stats time range">
+            <option value="all">All Time</option>
+            <option value="ytd">This Year</option>
+            <option value="12m">Last 12 Months</option>
+            <option value="90d">Last 90 Days</option>
+            <option value="30d">Last 30 Days</option>
+          </select>
+        </div>
+        <p class="switcher-caption" id="statsRangeCaption"></p>
+        <div id="statsContent" class="stats-groups"></div>
+      </section>
+
       <section class="view" data-view="reminders">
         <div class="section-header page-header">
           <div>
@@ -174,6 +216,10 @@
         <div class="data-actions data-actions-panel">
           <button class="ghost-button" id="exportDataButton" type="button">Export Data</button>
           <button class="ghost-button" id="importDataButton" type="button">Import Data</button>
+          <select id="unitSelect" class="currency-select" aria-label="Distance unit">
+            <option value="km">km</option>
+            <option value="mi">mi</option>
+          </select>
           <select id="currencySelect" class="currency-select" aria-label="Display currency">
             <option value="LKR">LKR</option>
             <option value="USD">USD</option>
@@ -192,10 +238,10 @@
 
   <nav class="bottom-nav" aria-label="Primary mobile navigation">
     <button class="tab-item active" type="button" data-nav="dashboard">Home</button>
-    <button class="tab-item" type="button" data-nav="vehicles">Vehicles</button>
+    <button class="tab-item" type="button" data-nav="fuel">Fuel</button>
     <button class="tab-item" type="button" data-nav="maintenance">Service</button>
+    <button class="tab-item" type="button" data-nav="stats">Stats</button>
     <button class="tab-item" type="button" data-nav="reminders">Alerts</button>
-    <button class="tab-item" type="button" data-nav="service-centers">Centers</button>
   </nav>
 
   <div class="modal-backdrop hidden" id="modalRoot">
@@ -310,6 +356,90 @@
     </form>
   </template>
 
+  <template id="fuelModal">
+    <form class="form-grid" id="fuelForm">
+      <label>
+        Vehicle
+        <select name="vehicleId" required></select>
+      </label>
+      <label>
+        Date
+        <input name="date" type="date" required>
+      </label>
+      <label>
+        Odometer
+        <input name="odometer" type="number" min="0" step="0.1" placeholder="97600" required>
+      </label>
+      <label>
+        Quantity (Ltr)
+        <input name="quantity" type="number" min="0" step="0.001" placeholder="16.4" required>
+      </label>
+      <label>
+        Total Cost
+        <input name="totalCost" type="number" min="0" step="0.01" placeholder="8000">
+      </label>
+      <label>
+        Filling Station
+        <input name="station" placeholder="IOC Kandy Rd">
+      </label>
+      <label class="checkbox-label">
+        <input name="partial" type="checkbox"> Partial tank
+      </label>
+      <label class="checkbox-label">
+        <input name="missedFillUp" type="checkbox"> Missed previous fill-up
+      </label>
+      <label class="full-width">
+        Notes
+        <textarea name="notes" rows="2" placeholder="Optional"></textarea>
+      </label>
+      <button class="primary-button" type="submit">Save Fill-up</button>
+    </form>
+  </template>
+
+  <template id="expenseModal">
+    <form class="form-grid" id="expenseForm">
+      <label>
+        Vehicle
+        <select name="vehicleId" required></select>
+      </label>
+      <label>
+        Expense Type
+        <select name="expenseType">
+          <option>Tyres</option>
+          <option>Insurance</option>
+          <option>Tax</option>
+          <option>Toll</option>
+          <option>Parking</option>
+          <option>Fine</option>
+          <option>MOT / Emission</option>
+          <option>Accessories</option>
+          <option>Other</option>
+        </select>
+      </label>
+      <label>
+        Date
+        <input name="date" type="date" required>
+      </label>
+      <label>
+        Odometer (optional)
+        <input name="odometer" type="number" min="0">
+      </label>
+      <label>
+        Cost
+        <input name="totalCost" type="number" min="0" step="0.01" required>
+      </label>
+      <label>
+        Place / Vendor
+        <input name="vendor" placeholder="KUSUM TYRES">
+      </label>
+      <label class="full-width">
+        Notes
+        <textarea name="notes" rows="2" placeholder="Optional"></textarea>
+      </label>
+      <button class="primary-button" type="submit">Save Expense</button>
+    </form>
+  </template>
+
   <template id="reminderModal">
     <form class="form-grid" id="reminderForm">
       <label>
@@ -339,6 +469,17 @@
       <label>
         Snoozed Until
         <input name="snoozedUntil" type="date">
+      </label>
+      <label class="checkbox-label">
+        <input name="recurring" type="checkbox"> Recurring
+      </label>
+      <label>
+        Repeat every (days)
+        <input name="intervalDays" type="number" min="0" placeholder="180">
+      </label>
+      <label>
+        Repeat every (distance)
+        <input name="intervalMileage" type="number" min="0" placeholder="5000">
       </label>
       <button class="primary-button" type="submit">Save Reminder</button>
     </form>
